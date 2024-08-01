@@ -121,6 +121,8 @@ func main() {
 	} else if toUnzipStr == "false" {
 		toUnzip = false
 	}
+
+	var fileID string
 	fileID, err = uploadOrUpdateFile(svc, file, name, folderId, overwrite)
 	if err != nil {
 		githubactions.Fatalf("File upload or update failed with error: %v", err)
@@ -136,6 +138,55 @@ func main() {
 
 
 	
+
+	
+}
+// unzipFile unzips the content of the provided reader and extracts it to the destination folder.
+func unzipFile(reader io.Reader, destFolder string) error {
+	// Create a zip reader
+	zipReader, err := zip.NewReader(reader.(io.ReaderAt), reader.(*bytes.Reader).Len())
+	if err != nil {
+		return fmt.Errorf("failed to create zip reader: %v", err)
+	}
+
+	for _, file := range zipReader.File {
+		filePath := filepath.Join(destFolder, file.Name)
+		if file.FileInfo().IsDir() {
+			// Create directories
+			if err := os.MkdirAll(filePath, file.Mode()); err != nil {
+				return fmt.Errorf("failed to create directory %s: %v", filePath, err)
+			}
+			continue
+		}
+
+		// Create the file
+		destFile, err := os.Create(filePath)
+		if err != nil {
+			return fmt.Errorf("failed to create file %s: %v", filePath, err)
+		}
+		defer destFile.Close()
+
+		// Copy the content of the zip file to the newly created file
+		fileReader, err := file.Open()
+		if err != nil {
+			return fmt.Errorf("failed to open file %s in zip: %v", file.Name, err)
+		}
+		defer fileReader.Close()
+
+		if _, err := io.Copy(destFile, fileReader); err != nil {
+			return fmt.Errorf("failed to copy file %s content: %v", file.Name, err)
+		}
+	}
+	return nil
+}
+
+func downloadFile(svc *drive.Service, fileId string) (io.Reader, error) {
+	resp, err := svc.Files.Get(fileId).
+		Download()
+	if err != nil {
+		return nil, fmt.Errorf("failed to download file: %v", err)
+	}
+	return resp.Body, nil
 }
 
 func unzipGoogleDriveFile(svc *drive.Service, fileId, destFolder string) error {
@@ -146,7 +197,7 @@ func unzipGoogleDriveFile(svc *drive.Service, fileId, destFolder string) error {
 	}
 
 	// Unzip the file
-	return unzipFile(fileReader, destFolder)
+	return svc.Files.unzipFile(fileReader, destFolder)
 }
 
 func missingInput(inputName string) {

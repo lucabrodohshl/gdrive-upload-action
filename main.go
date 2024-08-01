@@ -116,17 +116,20 @@ func main() {
 
 	isDirectoryStr := githubactions.GetInput(isDirectory)
 	var isDirectory bool
-	if isDirectoryStr == "" || isDirectoryStr == "true" {
-		isDirectory = true
-	} else if isDirectoryStr == "false" {
+	if isDirectoryStr == "" || isDirectoryStr == "false" {
 		isDirectory = false
+	} else if isDirectoryStr == "true" {
+		isDirectory = true
+	}
+	if isDirectory == false{
+		err = uploadOrUpdateFile(svc, file, name, folderId, overwrite)
+		if err != nil {
+			githubactions.Fatalf("File upload or update failed with error: %v", err)
+		}
 	}
 
 
-	err = uploadOrUpdateFile(svc, file, name, folderId, overwrite)
-	if err != nil {
-		githubactions.Fatalf("File upload or update failed with error: %v", err)
-	}
+	
 }
 
 func missingInput(inputName string) {

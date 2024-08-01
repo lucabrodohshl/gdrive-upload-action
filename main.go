@@ -162,7 +162,7 @@ func incorrectInput(inputName string, reason string) {
 }
 
 
-func uploadOrUpdateFile(svc *drive.Service, file *os.File, name, folderId string, overwrite bool) error {
+func uploadOrUpdateFile(svc *drive.Service, file *os.File, name, folderId string, overwrite bool) (string, error) {
 	uploadNewFile := true
 	var fileId string
 	

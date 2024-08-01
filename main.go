@@ -10,6 +10,9 @@ import (
 	"log"
 	"os"
 	"strings"
+	"io"
+	"archive/zip"
+	"path/filepath"
 
 	"github.com/sethvargo/go-githubactions"
 	"golang.org/x/oauth2/google"
@@ -197,7 +200,7 @@ func unzipGoogleDriveFile(svc *drive.Service, fileId, destFolder string) error {
 	}
 
 	// Unzip the file
-	return svc.Files.unzipFile(fileReader, destFolder)
+	return unzipFile(fileReader, destFolder)
 }
 
 func missingInput(inputName string) {

@@ -24,7 +24,7 @@ const (
 	credentialsInput = "credentials"
 	encodedInput     = "encoded"
 	overwrite        = "overwrite"
-	isDirectory		 = "isDirectory"
+	toUnzip		 	 = "toUnzip"
 )
 
 func main() {
@@ -114,15 +114,21 @@ func main() {
 		overwrite = false
 	}
 
-	isDirectoryStr := githubactions.GetInput(isDirectory)
-	var isDirectory bool
-	if isDirectoryStr == "" || isDirectoryStr == "false" {
-		isDirectory = false
-	} else if isDirectoryStr == "true" {
-		isDirectory = true
+	toUnzipStr := githubactions.GetInput(toUnzip)
+	var toUnzip bool
+	if toUnzipStr == "" || toUnzipStr == "true" {
+		toUnzip = true
+	} else if toUnzip == "false" {
+		toUnzip = false
 	}
-	if isDirectory == false{
-		err = uploadOrUpdateFile(svc, file, name, folderId, overwrite)
+	fileID, err = uploadOrUpdateFile(svc, file, name, folderId, overwrite)
+	if err != nil {
+		githubactions.Fatalf("File upload or update failed with error: %v", err)
+	}
+
+	
+	if toUnzip{
+		err = unzipGoogleDriveFile(svc, fileID, folderId+"/archive")
 		if err != nil {
 			githubactions.Fatalf("File upload or update failed with error: %v", err)
 		}
@@ -130,6 +136,17 @@ func main() {
 
 
 	
+}
+
+func unzipGoogleDriveFile(svc *drive.Service, fileId, destFolder string) error {
+	// Download the file
+	fileReader, err := downloadFile(svc, fileId)
+	if err != nil {
+		return err
+	}
+
+	// Unzip the file
+	return unzipFile(fileReader, destFolder)
 }
 
 func missingInput(inputName string) {
@@ -147,6 +164,7 @@ func incorrectInput(inputName string, reason string) {
 
 func uploadOrUpdateFile(svc *drive.Service, file *os.File, name, folderId string, overwrite bool) error {
 	uploadNewFile := true
+	var fileId string
 	
 	if overwrite {
 		// Query for all files in Google Drive directory with name = <name>
@@ -159,7 +177,7 @@ func uploadOrUpdateFile(svc *drive.Service, file *os.File, name, folderId string
 			Do()
 
 		if err != nil {
-			return fmt.Errorf("querying file: %+v failed with error: %v", filenameQuery, err)
+			return nil, fmt.Errorf("querying file: %+v failed with error: %v", filenameQuery, err)
 		}
 
 		if len(filesQueryCallResult.Files) != 0 {
@@ -176,8 +194,9 @@ func uploadOrUpdateFile(svc *drive.Service, file *os.File, name, folderId string
 					"Updating file %s (in folder %s) with id %s", driveFile.Name, folderId, driveFile.Id,
 				)
 				if err != nil {
-					return fmt.Errorf("updating file: %+v failed with error: %v", driveFile, err)
+					return nil, fmt.Errorf("updating file: %+v failed with error: %v", driveFile, err)
 				}
+				fileId = driveFile.Id
 			}
 		}
 	}
@@ -187,10 +206,11 @@ func uploadOrUpdateFile(svc *drive.Service, file *os.File, name, folderId string
 			Parents: []string{folderId},
 		}
 		githubactions.Debugf("Creating file %s in folder %s", f.Name, folderId)
-		_, err := svc.Files.Create(f).Media(file).SupportsAllDrives(true).Do()
+		createdFile, err := svc.Files.Create(f).Media(file).SupportsAllDrives(true).Do()
 		if err != nil {
-			return fmt.Errorf("creating file: %+v failed with error: %v", f, err)
+			return nil, fmt.Errorf("creating file: %+v failed with error: %v", f, err)
 		}
+		fileId = createdFile.Id
 	}
-	return nil
+	return fileId, nil
 }

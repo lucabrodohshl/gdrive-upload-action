@@ -118,7 +118,7 @@ func main() {
 	var toUnzip bool
 	if toUnzipStr == "" || toUnzipStr == "true" {
 		toUnzip = true
-	} else if toUnzip == "false" {
+	} else if toUnzipStr == "false" {
 		toUnzip = false
 	}
 	fileID, err = uploadOrUpdateFile(svc, file, name, folderId, overwrite)

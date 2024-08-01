@@ -13,6 +13,7 @@ import (
 	"io"
 	"archive/zip"
 	"path/filepath"
+	"bytes"
 
 	"github.com/sethvargo/go-githubactions"
 	"golang.org/x/oauth2/google"

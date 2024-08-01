@@ -1,3 +1,6 @@
+// Mathis Van Eetvelde
+// 2021-present
+
 package main
 
 import (
@@ -6,7 +9,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/sethvargo/go-githubactions"
@@ -92,159 +94,70 @@ func main() {
 		log.Println(err)
 	}
 
-	// check if the filename is a directory
-	fileInfo, err := os.Stat(filename)
+	file, err := os.Open(filename)
 	if err != nil {
-		githubactions.Fatalf(fmt.Sprintf("stat file/directory failed with error: %v", err))
+		githubactions.Fatalf(fmt.Sprintf("opening file with filename: %v failed with error: %v", filename, err))
 	}
 
-	if fileInfo.IsDir() {
-		// Upload directory
-		err = uploadDirectory(svc, filename, name, folderId, ctx)
+	// decide name of file in GDrive
+	if name == "" {
+		name = file.Name()
+	}
+
+	// parse overwrite flag
+	overwriteStr := githubactions.GetInput(overwrite)
+	var overwrite bool
+	if overwriteStr == "" || overwriteStr == "true" {
+		overwrite = true
+	} else if overwriteStr == "false" {
+		overwrite = false
+	}
+
+	uploadNewFile := true
+	if overwrite {
+		// Query for all files in google drive directory with name = <name>
+		filenameQuery := fmt.Sprintf("name = '%s' and '%s' in parents", name, folderId)
+		filesQueryCallResult, err := svc.Files.
+			List().
+			IncludeItemsFromAllDrives(true).
+			SupportsAllDrives(true).
+			Q(filenameQuery).
+			Do()
+
 		if err != nil {
-			githubactions.Fatalf(fmt.Sprintf("uploading directory failed with error: %v", err))
-		}
-	} else {
-		// Upload single file
-		file, err := os.Open(filename)
-		if err != nil {
-			githubactions.Fatalf(fmt.Sprintf("opening file with filename: %v failed with error: %v", filename, err))
-		}
-		defer file.Close()
-
-		// decide name of file in GDrive
-		if name == "" {
-			name = file.Name()
+			githubactions.Fatalf(fmt.Sprintf("querying file: %+v failed with error: %v", filenameQuery, err))
 		}
 
-		// parse overwrite flag
-		overwriteStr := githubactions.GetInput(overwrite)
-		var overwrite bool
-		if overwriteStr == "" || overwriteStr == "true" {
-			overwrite = true
-		} else if overwriteStr == "false" {
-			overwrite = false
-		}
-
-		uploadNewFile := true
-		if overwrite {
-			// Query for all files in google drive directory with name = <name>
-			filenameQuery := fmt.Sprintf("name = '%s' and '%s' in parents", name, folderId)
-			filesQueryCallResult, err := svc.Files.
-				List().
-				IncludeItemsFromAllDrives(true).
-				SupportsAllDrives(true).
-				Q(filenameQuery).
-				Do()
-
-			if err != nil {
-				githubactions.Fatalf(fmt.Sprintf("querying file: %+v failed with error: %v", filenameQuery, err))
-			}
-
-			if len(filesQueryCallResult.Files) != 0 {
-				githubactions.Debugf("Found %d files matching file name and folder", len(filesQueryCallResult.Files))
-				// overwrite each file's content, do not upload a new file
-				uploadNewFile = false
-				for _, driveFile := range filesQueryCallResult.Files {
-					_, err = svc.Files.
-						Update(driveFile.Id, &drive.File{Name: name}).
-						SupportsAllDrives(true).
-						Media(file).
-						Do()
-					githubactions.Debugf(
-						"Updating file %s (in folder %s) with id %s", driveFile.Name, folderId, driveFile.Id,
-					)
-					if err != nil {
-						githubactions.Fatalf(fmt.Sprintf("updating file: %+v failed with error: %v", driveFile, err))
-					}
+		if len(filesQueryCallResult.Files) != 0 {
+			githubactions.Debugf("Found %d files matching file name and folder", len(filesQueryCallResult.Files))
+			// overwrite each file's content, do not upload a new file
+			uploadNewFile = false
+			for _, driveFile := range filesQueryCallResult.Files {
+				_, err = svc.Files.
+					Update(driveFile.Id, &drive.File{Name: name}).
+					SupportsAllDrives(true).
+					Media(file).
+					Do()
+				githubactions.Debugf(
+					"Updating file %s (in folder %s) with id %s", driveFile.Name, folderId, driveFile.Id,
+				)
+				if err != nil {
+					githubactions.Fatalf(fmt.Sprintf("updating file: %+v failed with error: %v", driveFile, err))
 				}
 			}
 		}
-		if uploadNewFile {
-			f := &drive.File{
-				Name:    name,
-				Parents: []string{folderId},
-			}
-			githubactions.Debugf("Creating file %s in folder %s", f.Name, folderId)
-			_, err = svc.Files.Create(f).Media(file).SupportsAllDrives(true).Do()
-			if err != nil {
-				githubactions.Fatalf(fmt.Sprintf("creating file: %+v failed with error: %v", f, err))
-			}
-		}
 	}
-}
-
-func uploadDirectory(svc *drive.Service, dirPath, gDriveFolderName, parentFolderId string, ctx context.Context) error {
-	// Create or find the Google Drive folder
-	gDriveFolderId, err := findOrCreateFolder(svc, gDriveFolderName, parentFolderId, ctx)
-	if err != nil {
-		return err
-	}
-
-	err = filepath.Walk(dirPath, func(path string, info os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			return nil // Skip directories as they are handled separately
-		}
-
-		relativePath, _ := filepath.Rel(dirPath, path)
-		gDrivePath := filepath.Join(gDriveFolderName, relativePath)
-		gDriveFileName := info.Name()
-
-		// Upload file to Google Drive
-		file, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		defer file.Close()
-
+	if uploadNewFile {
 		f := &drive.File{
-			Name:    gDriveFileName,
-			Parents: []string{gDriveFolderId},
+			Name:    name,
+			Parents: []string{folderId},
 		}
+		githubactions.Debugf("Creating file %s in folder %s", f.Name, folderId)
 		_, err = svc.Files.Create(f).Media(file).SupportsAllDrives(true).Do()
 		if err != nil {
-			return err
+			githubactions.Fatalf(fmt.Sprintf("creating file: %+v failed with error: %v", f, err))
 		}
-
-		return nil
-	})
-
-	return err
-}
-
-func findOrCreateFolder(svc *drive.Service, folderName, parentFolderId string, ctx context.Context) (string, error) {
-	// Query for existing folder
-	folderQuery := fmt.Sprintf("name = '%s' and '%s' in parents and mimeType = 'application/vnd.google-apps.folder'", folderName, parentFolderId)
-	foldersQueryCallResult, err := svc.Files.
-		List().
-		IncludeItemsFromAllDrives(true).
-		SupportsAllDrives(true).
-		Q(folderQuery).
-		Do()
-
-	if err != nil {
-		return "", fmt.Errorf("querying folder: %+v failed with error: %v", folderQuery, err)
 	}
-
-	if len(foldersQueryCallResult.Files) > 0 {
-		return foldersQueryCallResult.Files[0].Id, nil
-	}
-
-	// Create new folder
-	folder := &drive.File{
-		Name:     folderName,
-		Parents:  []string{parentFolderId},
-		MimeType: "application/vnd.google-apps.folder",
-	}
-	folder, err = svc.Files.Create(folder).SupportsAllDrives(true).Do()
-	if err != nil {
-		return "", fmt.Errorf("creating folder: %+v failed with error: %v", folder, err)
-	}
-
-	return folder.Id, nil
 }
 
 func missingInput(inputName string) {
@@ -255,4 +168,6 @@ func incorrectInput(inputName string, reason string) {
 	if reason == "" {
 		githubactions.Fatalf(fmt.Sprintf("incorrect input '%v'", inputName))
 	} else {
-		githubactions.Fatalf(fmt.Sprintf("incorrect input '%
+		githubactions.Fatalf(fmt.Sprintf("incorrect input '%v' reason: %v", inputName, reason))
+	}
+}

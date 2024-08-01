@@ -24,6 +24,7 @@ const (
 	credentialsInput = "credentials"
 	encodedInput     = "encoded"
 	overwrite        = "overwrite"
+	isDirectory		 = "isDirectory"
 )
 
 func main() {

@@ -177,7 +177,7 @@ func uploadOrUpdateFile(svc *drive.Service, file *os.File, name, folderId string
 			Do()
 
 		if err != nil {
-			return nil, fmt.Errorf("querying file: %+v failed with error: %v", filenameQuery, err)
+			return "", fmt.Errorf("querying file: %+v failed with error: %v", filenameQuery, err)
 		}
 
 		if len(filesQueryCallResult.Files) != 0 {
@@ -194,7 +194,7 @@ func uploadOrUpdateFile(svc *drive.Service, file *os.File, name, folderId string
 					"Updating file %s (in folder %s) with id %s", driveFile.Name, folderId, driveFile.Id,
 				)
 				if err != nil {
-					return nil, fmt.Errorf("updating file: %+v failed with error: %v", driveFile, err)
+					return "", fmt.Errorf("updating file: %+v failed with error: %v", driveFile, err)
 				}
 				fileId = driveFile.Id
 			}
@@ -208,7 +208,7 @@ func uploadOrUpdateFile(svc *drive.Service, file *os.File, name, folderId string
 		githubactions.Debugf("Creating file %s in folder %s", f.Name, folderId)
 		createdFile, err := svc.Files.Create(f).Media(file).SupportsAllDrives(true).Do()
 		if err != nil {
-			return nil, fmt.Errorf("creating file: %+v failed with error: %v", f, err)
+			return "", fmt.Errorf("creating file: %+v failed with error: %v", f, err)
 		}
 		fileId = createdFile.Id
 	}
